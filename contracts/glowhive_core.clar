@@ -9,6 +9,7 @@
 ;; Data Variables
 (define-data-var next-review-id uint u0)
 (define-data-var next-routine-id uint u0)
+(define-data-var next-collection-id uint u0)
 
 ;; Data Maps
 (define-map users principal 
@@ -35,6 +36,16 @@
     author: principal,
     title: (string-ascii 100),
     steps: (string-utf8 2000),
+    created-at: uint
+  }
+)
+
+(define-map collections uint 
+  {
+    author: principal,
+    name: (string-ascii 100),
+    description: (string-utf8 500),
+    products: (list 20 (string-ascii 100)),
     created-at: uint
   }
 )
@@ -100,6 +111,41 @@
   )
 )
 
+;; Collection Management 
+(define-public (create-collection (name (string-ascii 100)) (description (string-utf8 500)))
+  (let
+    (
+      (collection-id (var-get next-collection-id))
+    )
+    (map-set collections collection-id {
+      author: tx-sender,
+      name: name,
+      description: description,
+      products: (list),
+      created-at: block-height
+    })
+    (var-set next-collection-id (+ collection-id u1))
+    (ok collection-id)
+  )
+)
+
+(define-public (add-to-collection (collection-id uint) (product-name (string-ascii 100)))
+  (let
+    (
+      (collection (unwrap! (map-get? collections collection-id) err-not-found))
+    )
+    (asserts! (is-eq tx-sender (get author collection)) err-not-authorized)
+    (ok (map-set collections collection-id 
+      (merge collection {
+        products: (unwrap-panic (as-max-len? 
+          (append (get products collection) product-name) 
+          u20
+        ))
+      })
+    ))
+  )
+)
+
 ;; Voting System
 (define-public (vote-review (review-id uint))
   (let
@@ -129,4 +175,8 @@
 
 (define-read-only (get-routine (routine-id uint))
   (map-get? routines routine-id)
+)
+
+(define-read-only (get-collection (collection-id uint))
+  (map-get? collections collection-id)
 )
