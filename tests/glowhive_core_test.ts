@@ -114,3 +114,42 @@ Clarinet.test({
     assertEquals(routineData['title'], "Morning Routine");
   }
 });
+
+Clarinet.test({
+  name: "Create and manage product collection",
+  async fn(chain: Chain, accounts: Map<string, Account>) {
+    const deployer = accounts.get('deployer')!;
+    
+    // Create collection
+    let createBlock = chain.mineBlock([
+      Tx.contractCall('glowhive_core', 'create-collection', [
+        types.ascii("My Favorites"),
+        types.utf8("Collection of my holy grail products")
+      ], deployer.address)
+    ]);
+    
+    createBlock.receipts[0].result.expectOk();
+    
+    // Add product to collection
+    let addBlock = chain.mineBlock([
+      Tx.contractCall('glowhive_core', 'add-to-collection', [
+        types.uint(0),
+        types.ascii("Test Product")
+      ], deployer.address)
+    ]);
+    
+    addBlock.receipts[0].result.expectOk();
+    
+    // Verify collection
+    let collection = chain.callReadOnlyFn(
+      'glowhive_core',
+      'get-collection',
+      [types.uint(0)],
+      deployer.address
+    );
+    
+    const collectionData = collection.result.expectSome();
+    assertEquals(collectionData['name'], "My Favorites");
+    assertEquals(collectionData['products'].length, 1);
+  }
+});
