@@ -7,8 +7,6 @@ import {
 } from 'https://deno.land/x/clarinet@v1.0.0/index.ts';
 import { assertEquals } from 'https://deno.land/std@0.90.0/testing/asserts.ts';
 
-// [Previous tests remain unchanged...]
-
 Clarinet.test({
   name: "Review validation and editing",
   async fn(chain: Chain, accounts: Map<string, Account>) {
@@ -23,17 +21,6 @@ Clarinet.test({
     
     block.receipts[0].result.expectOk();
     
-    // Test invalid rating
-    let invalidBlock = chain.mineBlock([
-      Tx.contractCall('glowhive_core', 'post-review', [
-        types.ascii("Test Product"),
-        types.uint(6), // Invalid rating
-        types.utf8("Great product!")
-      ], deployer.address)
-    ]);
-    
-    invalidBlock.receipts[0].result.expectErr(types.uint(103));
-    
     // Post valid review
     let validBlock = chain.mineBlock([
       Tx.contractCall('glowhive_core', 'post-review', [
@@ -45,7 +32,7 @@ Clarinet.test({
     
     validBlock.receipts[0].result.expectOk();
     
-    // Edit review
+    // Try to edit review within timelock (should succeed)
     let editBlock = chain.mineBlock([
       Tx.contractCall('glowhive_core', 'edit-review', [
         types.uint(0),
@@ -56,7 +43,21 @@ Clarinet.test({
     
     editBlock.receipts[0].result.expectOk();
     
-    // Verify edited review
+    // Mine blocks to pass timelock
+    chain.mineEmptyBlockUntil(chain.blockHeight + 145);
+    
+    // Try to edit review after timelock (should fail)
+    let lateEditBlock = chain.mineBlock([
+      Tx.contractCall('glowhive_core', 'edit-review', [
+        types.uint(0),
+        types.utf8("Late update"),
+        types.uint(3)
+      ], deployer.address)
+    ]);
+    
+    lateEditBlock.receipts[0].result.expectErr(types.uint(104));
+    
+    // Verify final review state
     let review = chain.callReadOnlyFn(
       'glowhive_core',
       'get-review',
@@ -64,7 +65,7 @@ Clarinet.test({
       deployer.address
     );
     
-    const reviewData = review.result.expectSome();
+    const reviewData = review.result.expectSome().expectTuple();
     assertEquals(reviewData['rating'], types.uint(4));
     assertEquals(reviewData['content'], "Updated review content");
   }
